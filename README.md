@@ -1,47 +1,70 @@
 # Actor Router
 
-An **actor router** directs incoming messages to one of several routees (actor references) based on a routing logic — broadcast, random, consistent-hash, or scatter-gather.
+**Actor Router** is a Rust library implementing message routing strategies across groups of actors — round-robin, random, broadcast, and consistent-hash — with pluggable selection policies for different communication patterns.
 
 ## Why It Matters
 
-Routers are the primary scaling mechanism in actor systems. They abstract away the fan-out pattern so callers send one message and the router handles distribution. Used heavily in Akka/Pekko for horizontal scaling.
+In a multi-actor system, the routing strategy determines the communication topology. Different workloads demand different topologies: request-reply workloads need round-robin for even distribution; fan-out computations need broadcast; stateful sessions need consistent-hash to route related messages to the same actor. The Router pattern, codified in Akka and Erlang/OTP, abstracts the selection logic from the application code, allowing routing strategy changes without modifying message handlers. This is essential for systems that must dynamically adapt their communication patterns — for example, switching from round-robin to broadcast during consensus rounds.
 
 ## How It Works
 
-Implements multiple routing strategies with configurable route tables. Each strategy has different latency, fairness, and ordering guarantees. The router itself is an actor, enabling hierarchical routing trees.
+The router maintains a strategy enum and a capacity counter. Each `route()` call returns the indices to dispatch to:
 
-## Usage
+**Round-Robin:** Returns a single index, advancing a modular counter. O(1) per call. Guarantees perfectly even distribution (±1 across N calls).
 
-```toml
-[dependencies]
-actor-router = "0.1.0"
+**Broadcast:** Returns all indices `[0..capacity)`. O(N) to construct, O(N) to process. Used for control messages, heartbeats, and consensus proposals where every actor must receive the same message.
+
+**Consistent Hash:** Routes based on a hash of the message key. The implementation uses a simplified fallback to round-robin, but the full algorithm places actors on a virtual ring (hash ring) with V replicas each:
+
+```
+ring = sorted([(hash(actor_i, replica_j), i) for all i, j])
+route(key) → ring[bisect(ring, hash(key)) % len(ring)].actor_index
 ```
 
-```rust
-use actor_router;
+When an actor joins or leaves, only K/V keys need remapping (where V = virtual nodes per actor, typically 150). This minimizes disruption compared to hash-table rehashing which remaps everything.
 
-// See examples/ directory for detailed usage
+**Random:** Theoretically uniform, but suffers from short-run clustering. Suitable only when approximate fairness is acceptable.
+
+| Strategy | Distribution | Key Benefit |
+|----------|-------------|-------------|
+| Round-robin | Perfect ±1 | Simplicity |
+| Broadcast | All actors | Fan-out |
+| Consistent-hash | Key-affinity | Session locality |
+| Random | Statistical | Stateless |
+
+## Quick Start
+
+```rust
+fn main() {
+    let mut router = Router::new(RoutingStrategy::RoundRobin, 3);
+    assert_eq!(router.route(), vec![0]);
+    assert_eq!(router.route(), vec![1]);
+    assert_eq!(router.route(), vec![2]);
+    assert_eq!(router.route(), vec![0]); // wraps
+
+    let mut bcast = Router::new(RoutingStrategy::Broadcast, 3);
+    assert_eq!(bcast.route(), vec![0, 1, 2]);
+}
 ```
 
 ## API
 
-- `RoutingStrategy` (lib.rs)
-- `Router` (lib.rs)
+| Type/Method | Description |
+|-------------|-------------|
+| `RoutingStrategy` | Enum: RoundRobin, Random, Broadcast, ConsistentHash |
+| `Router::new` | Construct with strategy and actor count |
+| `Router::route` | Returns `Vec<usize>` of target indices |
 
-## Architecture
+## Architecture Notes
 
-This crate is part of the **[SuperInstance](https://github.com/SuperInstance)** ecosystem — a conservation-law-based framework for fleet coordination, ternary computation, and distributed agent systems.
+The Router implements the **message dispatch topology** in the SuperInstance actor framework. Within γ + η = C, the routing strategy controls how conservation-law monitoring signals propagate: broadcast for species census (all nodes must report), round-robin for task dispatch (even γ-layer load), and consistent-hash for agent-session affinity in η-layer conversations.
 
-### Related Crates
-
-- [`superinstance-core`](https://github.com/SuperInstance/superinstance-core) — Core conservation law (γ + η = C)
-- [`superinstance-harness`](https://github.com/SuperInstance/superinstance-harness) — Build harness and self-improving loop
-- [`fleet-coordinator`](https://github.com/SuperInstance/fleet-coordinator) — Fleet-level coordination
+See [ARCHITECTURE.md](https://github.com/SuperInstance/SuperInstance/blob/main/ARCHITECTURE.md).
 
 ## References
 
-- [SuperInstance Architecture](https://github.com/SuperInstance/SuperInstance/blob/main/ARCHITECTURE.md)
-- [Conservation Law Paper](https://github.com/SuperInstance/SuperInstance/blob/main/docs/conservation-law.md)
+1. Karger, D. et al. (1997). "Consistent Hashing and Random Trees: Distributed Caching Protocols for Relieving Hot Spots on the World Wide Web." *STOC*.
+2. Haller, P. & Odersky, M. (2009). "Scala Actors: Unifying Thread-Based and Event-Based Programming." *Theoretical Computer Science*.
 
 ## License
 
