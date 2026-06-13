@@ -61,6 +61,10 @@ The Router implements the **message dispatch topology** in the SuperInstance act
 
 See [ARCHITECTURE.md](https://github.com/SuperInstance/SuperInstance/blob/main/ARCHITECTURE.md).
 
+**Mathematical foundation of consistent hashing:** The hash ring places nodes at positions determined by hash(node_id + replica_index). For V = 150 virtual nodes per physical node, the standard deviation of per-node load is σ ≈ (N/K) × √(K/V) where K = total keys and N = nodes. With V = 150, the load imbalance stays below 10% for K/N > 1000 — virtually perfect distribution.
+
+**Consensus integration:** The Broadcast strategy is used during consensus rounds where all actors must evaluate the same proposal. This is a one-to-many communication pattern with O(N) fan-out, used in Paxos-derivative protocols where all participants must vote on each proposal.
+
 ## References
 
 1. Karger, D. et al. (1997). "Consistent Hashing and Random Trees: Distributed Caching Protocols for Relieving Hot Spots on the World Wide Web." *STOC*.
