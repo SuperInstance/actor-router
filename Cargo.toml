@@ -1,9 +1,11 @@
 [package]
 name = "actor-router"
 version = "0.1.0"
-description = "A Rust library for Actor Router"
+description = "Actor Router — Rust implementation with the SuperInstance polyformalism canary wired in."
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/casey-digennaro/actor-router"
+repository = "https://github.com/SuperInstance/actor-router"
 edition = "2021"
+
+keywords = ["actor-router"]
 
 [dependencies]
